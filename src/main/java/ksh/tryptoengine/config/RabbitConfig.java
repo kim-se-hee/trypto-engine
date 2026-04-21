@@ -6,10 +6,11 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.SimpleMessageConverter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -54,12 +55,14 @@ public class RabbitConfig {
     }
 
     @Bean
-    public SimpleMessageListenerContainer inboxListenerContainer(ConnectionFactory cf) {
-        SimpleMessageListenerContainer c = new SimpleMessageListenerContainer(cf);
-        c.setQueueNames(inboxQueue);
-        c.setConcurrentConsumers(1);
-        c.setMaxConcurrentConsumers(1);
-        c.setAcknowledgeMode(AcknowledgeMode.AUTO);
-        return c;
+    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(ConnectionFactory cf) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(cf);
+        factory.setMessageConverter(new SimpleMessageConverter());
+        factory.setConcurrentConsumers(1);
+        factory.setMaxConcurrentConsumers(1);
+        factory.setPrefetchCount(64);
+        factory.setAcknowledgeMode(AcknowledgeMode.AUTO);
+        return factory;
     }
 }
