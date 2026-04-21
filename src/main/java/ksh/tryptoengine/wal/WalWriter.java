@@ -21,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -31,6 +33,7 @@ public class WalWriter {
 
     static final String WAL_FILE = "wal.log";
     static final String WAL_OLD_FILE = "wal.log.old";
+    private static final int BATCH_MAX = 100;
 
     private final BlockingQueue<WalCommand> channel = new LinkedBlockingQueue<>(16384);
     private long sequence = 0;
@@ -106,33 +109,75 @@ public class WalWriter {
     }
 
     private void loop() {
+        List<WalCommand> batch = new ArrayList<>(BATCH_MAX);
         while (running) {
             try {
-                WalCommand cmd = channel.take();
+                batch.add(channel.take());
+                channel.drainTo(batch, BATCH_MAX - 1);
+                processBatch(batch);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } finally {
+                batch.clear();
+            }
+        }
+    }
+
+    private void processBatch(List<WalCommand> batch) {
+        int pendingWrites = 0;
+        Timer.Sample sample = null;
+
+        for (WalCommand cmd : batch) {
+            try {
                 switch (cmd) {
                     case WalCommand.Write w -> {
-                        Timer.Sample sample = Timer.start(metrics.registry());
-                        try {
-                            writeLine(w.record());
-                        } finally {
-                            sample.stop(metrics.walAppend());
-                        }
+                        if (sample == null) sample = Timer.start(metrics.registry());
+                        writeLineNoSync(w.record());
+                        pendingWrites++;
                     }
                     case WalCommand.Rotate r -> {
+                        if (pendingWrites > 0) {
+                            syncAll();
+                            recordBatch(sample, pendingWrites);
+                            pendingWrites = 0;
+                            sample = null;
+                        }
                         try {
                             rotateFile();
                         } finally {
                             r.done().countDown();
                         }
                     }
-                    case WalCommand.Flush f -> f.done().countDown();
+                    case WalCommand.Flush f -> {
+                        if (pendingWrites > 0) {
+                            syncAll();
+                            recordBatch(sample, pendingWrites);
+                            pendingWrites = 0;
+                            sample = null;
+                        }
+                        f.done().countDown();
+                    }
                 }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
             } catch (IOException e) {
                 log.error("WAL operation failed", e);
             }
+        }
+
+        if (pendingWrites > 0) {
+            try {
+                syncAll();
+                recordBatch(sample, pendingWrites);
+            } catch (IOException e) {
+                log.error("WAL fsync failed", e);
+            }
+        }
+    }
+
+    private void recordBatch(Timer.Sample sample, int count) {
+        long elapsed = sample.stop(metrics.walAppend());
+        for (int i = 1; i < count; i++) {
+            metrics.walAppend().record(elapsed, java.util.concurrent.TimeUnit.NANOSECONDS);
         }
     }
 
@@ -142,10 +187,13 @@ public class WalWriter {
         writer = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8));
     }
 
-    private void writeLine(WalRecord rec) throws IOException {
+    private void writeLineNoSync(WalRecord rec) throws IOException {
         String line = mapper.writeValueAsString(rec);
         writer.write(line);
         writer.newLine();
+    }
+
+    private void syncAll() throws IOException {
         writer.flush();
         out.getFD().sync();
     }
