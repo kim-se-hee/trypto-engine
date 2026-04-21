@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import ksh.tryptoengine.engine.OrderDetail;
 import ksh.tryptoengine.event.FillCommand;
 import ksh.tryptoengine.event.OrderFilledEvent;
-import ksh.tryptoengine.holding.HoldingRecalculator;
+import ksh.tryptoengine.holding.HoldingIncrementalUpdater;
 import ksh.tryptoengine.metrics.EngineMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -19,9 +19,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @Slf4j
 @Component
@@ -30,18 +28,18 @@ public class FillTransactionExecutor {
     private static final String ORDER_FILLED = "ORDER_FILLED";
 
     private final JdbcTemplate jdbc;
-    private final HoldingRecalculator holdingRecalculator;
+    private final HoldingIncrementalUpdater holdingUpdater;
     private final ObjectMapper objectMapper;
     private final EngineMetrics metrics;
 
     public FillTransactionExecutor(
         JdbcTemplate jdbc,
-        HoldingRecalculator holdingRecalculator,
+        HoldingIncrementalUpdater holdingUpdater,
         @Qualifier("engineObjectMapper") ObjectMapper objectMapper,
         EngineMetrics metrics
     ) {
         this.jdbc = jdbc;
-        this.holdingRecalculator = holdingRecalculator;
+        this.holdingUpdater = holdingUpdater;
         this.objectMapper = objectMapper;
         this.metrics = metrics;
     }
@@ -126,14 +124,7 @@ public class FillTransactionExecutor {
             }
         );
 
-        Set<Long> seen = new HashSet<>();
-        for (FillCommand cmd : succeeded) {
-            OrderDetail o = cmd.order();
-            long key = (o.walletId() << 32) ^ (o.coinId() & 0xffffffffL);
-            if (seen.add(key)) {
-                holdingRecalculator.recalculate(o.walletId(), o.coinId());
-            }
-        }
+        holdingUpdater.apply(succeeded);
 
         metrics.matches().increment(succeeded.size());
     }
