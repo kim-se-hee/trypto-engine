@@ -9,10 +9,6 @@ import org.springframework.stereotype.Component;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * (exchange name, display_name) → exchange_coin_id 매핑 캐시.
- * 엔진 시작 시 로드하고, 없는 조합은 lazy 조회 후 캐시에 저장.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor

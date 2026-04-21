@@ -41,12 +41,6 @@ public class WalRecovery {
         this.walDir = Path.of(walDir);
     }
 
-    /**
-     * 스냅샷 로드 후 스냅샷 이후의 WAL 레코드만 리플레이하여 메모리 상태 복구.
-     * 틱 이벤트는 OrderBook sweep을 재수행하고, 그 결과로 나온 fill을 dbWriter로
-     * 흘려보내 DB 반영을 재시도한다. (publisher는 웹소켓 푸시용이라 복구 시 스킵)
-     * 멱등성은 FillTransactionExecutor의 status='PENDING' 조건부 UPDATE에 의존.
-     */
     public long recover(OrderBookRegistry registry) throws IOException {
         if (!Files.exists(walDir)) {
             return 0;

@@ -42,10 +42,6 @@ public class FillTransactionExecutor {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * orders 조건부 UPDATE → wallet_balance 차감 → outbox insert → holding 재계산.
-     * outbox insert 까지 같은 트랜잭션이므로 체결 커밋 = 알림 at-least-once 보장.
-     */
     @Transactional
     public void executeBatch(List<FillCommand> cmds) {
         if (cmds.isEmpty()) return;

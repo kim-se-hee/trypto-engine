@@ -9,11 +9,6 @@ import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 
-/**
- * orders 테이블의 FILLED row 들을 체결시각 오름차순으로 재생하여
- * holding 의 avg_buy_price / total_quantity / total_buy_amount / averaging_down_count 를
- * 통째로 재계산 후 upsert. 파생 상태로 다루므로 순서 의존 제거.
- */
 @Component
 @RequiredArgsConstructor
 public class HoldingRecalculator {
