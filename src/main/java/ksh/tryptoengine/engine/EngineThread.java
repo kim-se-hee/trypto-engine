@@ -1,5 +1,6 @@
 package ksh.tryptoengine.engine;
 
+import io.micrometer.core.instrument.Gauge;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import ksh.tryptoengine.dbwriter.DbWriterThread;
@@ -8,6 +9,7 @@ import ksh.tryptoengine.event.FillCommand;
 import ksh.tryptoengine.event.OrderCanceledEvent;
 import ksh.tryptoengine.event.OrderPlacedEvent;
 import ksh.tryptoengine.event.TickReceivedEvent;
+import ksh.tryptoengine.metrics.EngineMetrics;
 import ksh.tryptoengine.wal.SnapshotWriter;
 import ksh.tryptoengine.wal.WalRecovery;
 import ksh.tryptoengine.wal.WalWriter;
@@ -31,6 +33,7 @@ public class EngineThread {
     private final SnapshotWriter snapshotWriter;
     private final DbWriterThread dbWriter;
     private final ExchangeCoinResolver exchangeCoinResolver;
+    private final EngineMetrics metrics;
     private final OrderBookRegistry orderBookRegistry = new OrderBookRegistry();
     private final BlockingQueue<EngineInboundEvent> inbox = new LinkedBlockingQueue<>(16384);
 
@@ -47,6 +50,9 @@ public class EngineThread {
         long lastSeq = walRecovery.recover(orderBookRegistry);
         walWriter.setSequence(lastSeq);
         walWriter.start();
+        Gauge.builder("engine.queue.size", inbox, BlockingQueue::size)
+            .description("Engine inbox depth")
+            .register(metrics.registry());
         thread = new Thread(this::loop, "engine-main");
         thread.setDaemon(false);
         thread.start();

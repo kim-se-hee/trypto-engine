@@ -3,7 +3,9 @@ package ksh.tryptoengine.wal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import ksh.tryptoengine.dbwriter.DbWriterThread;
+import ksh.tryptoengine.metrics.EngineMetrics;
 import ksh.tryptoengine.engine.OrderBookRegistry;
 import ksh.tryptoengine.engine.ExchangeCoinResolver;
 import ksh.tryptoengine.engine.OrderBook;
@@ -50,9 +52,13 @@ class WalRecoveryTest {
         dbWriter = new CapturingDbWriter();
     }
 
+    private static EngineMetrics newMetrics() {
+        return new EngineMetrics(new SimpleMeterRegistry());
+    }
+
     static class CapturingDbWriter extends DbWriterThread {
         final List<FillCommand> captured = new ArrayList<>();
-        CapturingDbWriter() { super(null); }
+        CapturingDbWriter() { super(null, null); }
         @Override
         public void offer(FillCommand cmd) { captured.add(cmd); }
     }
@@ -70,7 +76,7 @@ class WalRecoveryTest {
 
     @Test
     void WAL만_있으면_전체_레코드_재생해서_상태_복구() throws IOException {
-        WalWriter writer = new WalWriter(mapper, walDir.toString());
+        WalWriter writer = new WalWriter(mapper, newMetrics(), walDir.toString());
         writer.start();
         writer.offer(placed(100L, "BUY", 1L, "7000", "1"));
         writer.offer(placed(101L, "SELL", 1L, "8000", "1"));
@@ -120,7 +126,7 @@ class WalRecoveryTest {
         SnapshotWriter snapshotWriter = new SnapshotWriter(mapper, walDir.toString());
         snapshotWriter.write(original, 5);
 
-        WalWriter writer = new WalWriter(mapper, walDir.toString());
+        WalWriter writer = new WalWriter(mapper, newMetrics(), walDir.toString());
         writer.setSequence(5);
         writer.start();
         writer.offer(placed(200L, "SELL", 1L, "8500", "2"));
@@ -142,7 +148,7 @@ class WalRecoveryTest {
 
     @Test
     void 체크포인트_사이클_스냅샷_로테이트_추가쓰기_복구() throws IOException {
-        WalWriter writer = new WalWriter(mapper, walDir.toString());
+        WalWriter writer = new WalWriter(mapper, newMetrics(), walDir.toString());
         SnapshotWriter snapshotWriter = new SnapshotWriter(mapper, walDir.toString());
         OrderBookRegistry liveState = new OrderBookRegistry();
 
@@ -179,7 +185,7 @@ class WalRecoveryTest {
 
     @Test
     void 틱_이벤트_재생은_sweep_결과를_dbWriter로_offer한다() throws IOException {
-        WalWriter writer = new WalWriter(mapper, walDir.toString());
+        WalWriter writer = new WalWriter(mapper, newMetrics(), walDir.toString());
         writer.start();
         writer.offer(placed(100L, "BUY", 1L, "7000", "1"));
         writer.offer(tick("UPBIT", "BTC", "6900"));
@@ -199,7 +205,7 @@ class WalRecoveryTest {
 
     @Test
     void 복구된_seq_는_이어서_채번되어_중복_없음() throws IOException {
-        WalWriter writer1 = new WalWriter(mapper, walDir.toString());
+        WalWriter writer1 = new WalWriter(mapper, newMetrics(), walDir.toString());
         writer1.start();
         writer1.offer(placed(100L, "BUY", 1L, "7000", "1"));
         writer1.offer(placed(101L, "BUY", 1L, "7100", "1"));
@@ -209,7 +215,7 @@ class WalRecoveryTest {
         OrderBookRegistry state = new OrderBookRegistry();
         long lastSeq = recovery.recover(state);
 
-        WalWriter writer2 = new WalWriter(mapper, walDir.toString());
+        WalWriter writer2 = new WalWriter(mapper, newMetrics(), walDir.toString());
         writer2.setSequence(lastSeq);
         writer2.start();
         long newSeq = writer2.offer(placed(102L, "BUY", 1L, "7200", "1"));

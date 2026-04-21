@@ -2,11 +2,13 @@ package ksh.tryptoengine.wal;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PreDestroy;
 import ksh.tryptoengine.event.EngineInboundEvent;
 import ksh.tryptoengine.event.OrderCanceledEvent;
 import ksh.tryptoengine.event.OrderPlacedEvent;
 import ksh.tryptoengine.event.TickReceivedEvent;
+import ksh.tryptoengine.metrics.EngineMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -34,14 +36,16 @@ public class WalWriter {
     private long sequence = 0;
     private final ObjectMapper mapper;
     private final Path walDir;
+    private final EngineMetrics metrics;
 
     private Thread thread;
     private volatile boolean running = true;
     private FileOutputStream out;
     private BufferedWriter writer;
 
-    public WalWriter(ObjectMapper mapper, @Value("${engine.wal.dir}") String walDir) {
+    public WalWriter(ObjectMapper mapper, EngineMetrics metrics, @Value("${engine.wal.dir}") String walDir) {
         this.mapper = mapper;
+        this.metrics = metrics;
         this.walDir = Path.of(walDir);
     }
 
@@ -106,7 +110,14 @@ public class WalWriter {
             try {
                 WalCommand cmd = channel.take();
                 switch (cmd) {
-                    case WalCommand.Write w -> writeLine(w.record());
+                    case WalCommand.Write w -> {
+                        Timer.Sample sample = Timer.start(metrics.registry());
+                        try {
+                            writeLine(w.record());
+                        } finally {
+                            sample.stop(metrics.walAppend());
+                        }
+                    }
                     case WalCommand.Rotate r -> {
                         try {
                             rotateFile();

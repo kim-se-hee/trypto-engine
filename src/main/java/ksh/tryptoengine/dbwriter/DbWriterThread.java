@@ -1,7 +1,9 @@
 package ksh.tryptoengine.dbwriter;
 
+import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PreDestroy;
 import ksh.tryptoengine.event.FillCommand;
+import ksh.tryptoengine.metrics.EngineMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -19,6 +21,7 @@ public class DbWriterThread {
     private static final int MAX_BATCH = 256;
 
     private final FillTransactionExecutor executor;
+    private final EngineMetrics metrics;
     private final BlockingQueue<FillCommand> channel = new LinkedBlockingQueue<>(16384);
 
     private Thread thread;
@@ -45,7 +48,12 @@ public class DbWriterThread {
             try {
                 batch.add(channel.take());
                 channel.drainTo(batch, MAX_BATCH - 1);
-                executor.executeBatch(batch);
+                Timer.Sample sample = Timer.start(metrics.registry());
+                try {
+                    executor.executeBatch(batch);
+                } finally {
+                    sample.stop(metrics.dbWrite());
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;

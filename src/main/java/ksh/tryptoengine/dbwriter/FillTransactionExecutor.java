@@ -6,6 +6,7 @@ import ksh.tryptoengine.engine.OrderDetail;
 import ksh.tryptoengine.event.FillCommand;
 import ksh.tryptoengine.event.OrderFilledEvent;
 import ksh.tryptoengine.holding.HoldingRecalculator;
+import ksh.tryptoengine.metrics.EngineMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
@@ -31,15 +32,18 @@ public class FillTransactionExecutor {
     private final JdbcTemplate jdbc;
     private final HoldingRecalculator holdingRecalculator;
     private final ObjectMapper objectMapper;
+    private final EngineMetrics metrics;
 
     public FillTransactionExecutor(
         JdbcTemplate jdbc,
         HoldingRecalculator holdingRecalculator,
-        @Qualifier("engineObjectMapper") ObjectMapper objectMapper
+        @Qualifier("engineObjectMapper") ObjectMapper objectMapper,
+        EngineMetrics metrics
     ) {
         this.jdbc = jdbc;
         this.holdingRecalculator = holdingRecalculator;
         this.objectMapper = objectMapper;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -130,5 +134,7 @@ public class FillTransactionExecutor {
                 holdingRecalculator.recalculate(o.walletId(), o.coinId());
             }
         }
+
+        metrics.matches().increment(succeeded.size());
     }
 }
