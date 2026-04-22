@@ -16,7 +16,7 @@ public class EngineMetrics {
     public EngineMetrics(MeterRegistry registry) {
         this.registry = registry;
         this.walAppend = Timer.builder("engine.wal.append")
-            .description("WAL record append latency")
+            .description("WAL batch processing latency (writes + fsync per batch)")
             .publishPercentiles(0.5, 0.95, 0.99)
             .publishPercentileHistogram()
             .register(registry);

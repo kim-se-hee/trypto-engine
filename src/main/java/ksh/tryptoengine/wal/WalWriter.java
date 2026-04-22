@@ -139,7 +139,7 @@ public class WalWriter {
                     case WalCommand.Rotate r -> {
                         if (pendingWrites > 0) {
                             syncAll();
-                            recordBatch(sample, pendingWrites);
+                            sample.stop(metrics.walAppend());
                             pendingWrites = 0;
                             sample = null;
                         }
@@ -152,7 +152,7 @@ public class WalWriter {
                     case WalCommand.Flush f -> {
                         if (pendingWrites > 0) {
                             syncAll();
-                            recordBatch(sample, pendingWrites);
+                            sample.stop(metrics.walAppend());
                             pendingWrites = 0;
                             sample = null;
                         }
@@ -167,17 +167,10 @@ public class WalWriter {
         if (pendingWrites > 0) {
             try {
                 syncAll();
-                recordBatch(sample, pendingWrites);
+                sample.stop(metrics.walAppend());
             } catch (IOException e) {
                 log.error("WAL fsync failed", e);
             }
-        }
-    }
-
-    private void recordBatch(Timer.Sample sample, int count) {
-        long elapsed = sample.stop(metrics.walAppend());
-        for (int i = 1; i < count; i++) {
-            metrics.walAppend().record(elapsed, java.util.concurrent.TimeUnit.NANOSECONDS);
         }
     }
 
