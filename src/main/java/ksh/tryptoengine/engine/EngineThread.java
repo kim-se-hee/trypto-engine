@@ -53,7 +53,7 @@ public class EngineThread {
         Gauge.builder("engine.queue.size", inbox, BlockingQueue::size)
             .description("Engine inbox depth")
             .register(metrics.registry());
-        thread = new Thread(this::loop, "engine-main");
+        thread = new Thread(this::loop, "engine-core");
         thread.setDaemon(false);
         thread.start();
         log.info("engine thread started (recovered lastSeq={})", lastSeq);
